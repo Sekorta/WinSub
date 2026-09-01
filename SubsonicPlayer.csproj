@@ -69,7 +69,6 @@
     <Compile Include="Services\SettingsManager.cs" />
     <Compile Include="Services\App.cs" />
     <Compile Include="Services\GlobalMediaHook.cs" />
-
     <Compile Include="Controls\SidebarControl.cs">
       <SubType>UserControl</SubType>
     </Compile>
@@ -116,7 +115,9 @@
       <SubType>UserControl</SubType>
     </Compile>
     <Compile Include="DarkMenuRenderer.cs" />
-    <Compile Include="DarkListViewHelper.cs" />
+    <Compile Include="DarkListViewHelper.cs">
+      <SubType>Component</SubType>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

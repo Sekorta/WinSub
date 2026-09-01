@@ -13,7 +13,7 @@ namespace SubsonicPlayer
         {
             _cacheDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "SubsonicPlayer", "cache");
+                "WinSub", "cache");
             if (!Directory.Exists(_cacheDir))
                 Directory.CreateDirectory(_cacheDir);
         }

@@ -18,7 +18,7 @@ namespace SubsonicPlayer
         {
             string dir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "SubsonicPlayer");
+                "WinSub");
             _filePath = Path.Combine(dir, "settings.txt");
             _serversPath = Path.Combine(dir, "servers.txt");
             Servers = new List<ServerProfile>();

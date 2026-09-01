@@ -82,7 +82,12 @@ namespace SubsonicPlayer
             };
             Controls.Add(_picLogo);
 
-            _lblTitle = CreateLabel("WinSub", centerX - 60, formY + 64, 16f, FontStyle.Bold, _textColor);
+            _lblTitle = CreateLabel("WinSub", 0, formY + 64, 16f, FontStyle.Bold, _textColor);
+            using (Font f = new Font("Segoe UI", 16f, FontStyle.Bold))
+            {
+                int tw = TextRenderer.MeasureText("WinSub", f).Width;
+                _lblTitle.Location = new Point(centerX - tw / 2, formY + 64);
+            }
             Controls.Add(_lblTitle);
 
             _lblServer = CreateLabel("Серверы", leftX, formY + 100, 9f, FontStyle.Bold, _textColor);
