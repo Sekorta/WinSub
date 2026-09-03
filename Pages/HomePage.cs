@@ -77,8 +77,8 @@ namespace SubsonicPlayer
             BackgroundWorker worker = new BackgroundWorker();
             worker.DoWork += (s, e) =>
             {
-                List<AlbumItem> albums = App.Client.GetAlbumList("recent", 20);
-                List<TrackItem> tracks = App.Client.GetRandomSongs(30);
+                List<AlbumItem> albums = App.Client.GetAlbumList("recent", 5);
+                List<TrackItem> tracks = App.Client.GetRandomSongs(10);
                 e.Result = new object[] { albums, tracks };
             };
             worker.RunWorkerCompleted += (s, e) =>
@@ -182,7 +182,6 @@ namespace SubsonicPlayer
             pic.Location = new Point(2, 2);
 
             Label lblNum = new Label();
-            lblNum.Text = "\u266A";
             lblNum.ForeColor = Color.FromArgb(100, 100, 100);
             lblNum.Font = new Font("Segoe UI", 8f);
             lblNum.Location = new Point(40, 8);
@@ -192,14 +191,14 @@ namespace SubsonicPlayer
             lblTitle.Text = track.Title;
             lblTitle.ForeColor = Color.FromArgb(200, 200, 200);
             lblTitle.Font = new Font("Segoe UI", 8.5f);
-            lblTitle.Location = new Point(65, 3);
+            lblTitle.Location = new Point(40, 3);
             lblTitle.Size = new Size(160, 16);
 
             Label lblArtist = new Label();
             lblArtist.Text = track.Artist;
             lblArtist.ForeColor = Color.FromArgb(120, 120, 120);
             lblArtist.Font = new Font("Segoe UI", 7.5f);
-            lblArtist.Location = new Point(65, 19);
+            lblArtist.Location = new Point(40, 19);
             lblArtist.Size = new Size(160, 14);
 
             Label lblDuration = new Label();
