@@ -1,7 +1,7 @@
-using System.Drawing;
+﻿using System.Drawing;
 using System.Windows.Forms;
 
-namespace SubsonicPlayer
+namespace WinSub
 {
     public class DarkMenuRenderer : ToolStripProfessionalRenderer
     {

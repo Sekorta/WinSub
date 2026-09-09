@@ -1,12 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
 
-namespace SubsonicPlayer
+namespace WinSub
 {
     public class SubsonicClient
     {
@@ -88,22 +87,18 @@ namespace SubsonicPlayer
         private XDocument Request(string command, params string[] extraParams)
         {
             string url = BuildUrl(command, extraParams);
-            using (WebClient client = new WebClient())
+            string xml = WinHttpClient.DownloadString(url);
+            XDocument doc = XDocument.Parse(xml);
+            XElement root = doc.Root;
+            if (root != null && root.Attribute("status") != null &&
+                root.Attribute("status").Value == "failed")
             {
-                client.Encoding = Encoding.UTF8;
-                string xml = client.DownloadString(url);
-                XDocument doc = XDocument.Parse(xml);
-                XElement root = doc.Root;
-                if (root != null && root.Attribute("status") != null &&
-                    root.Attribute("status").Value == "failed")
-                {
-                    XElement error = root.Element(NS + "error") ?? root.Element("error");
-                    string msg = error != null && error.Attribute("message") != null
-                        ? error.Attribute("message").Value : "Unknown error";
-                    throw new Exception("API: " + msg);
-                }
-                return doc;
+                XElement error = root.Element(NS + "error") ?? root.Element("error");
+                string msg = error != null && error.Attribute("message") != null
+                    ? error.Attribute("message").Value : "Unknown error";
+                throw new Exception("API: " + msg);
             }
+            return doc;
         }
 
         private XElement FindElement(XElement parent, string name)
@@ -129,7 +124,19 @@ namespace SubsonicPlayer
         public string PingDetailed()
         {
             try { Request("ping"); return "ok"; }
-            catch (Exception ex) { return ex.Message; }
+            catch (Exception ex)
+            {
+                StringBuilder sb = new StringBuilder();
+                int d = 0;
+                while (ex != null && d < 5)
+                {
+                    if (sb.Length > 0) sb.AppendLine();
+                    sb.Append(ex.Message);
+                    ex = ex.InnerException;
+                    d++;
+                }
+                return sb.ToString();
+            }
         }
 
         public List<TrackItem> GetRandomSongs(int count = 500)
@@ -371,6 +378,8 @@ namespace SubsonicPlayer
         {
             string id = GetAttr(song, "id");
             if (string.IsNullOrEmpty(id)) return null;
+            string coverArt = GetAttr(song, "coverArt");
+            if (string.IsNullOrEmpty(coverArt)) coverArt = GetAttr(song, "albumId");
             return new TrackItem
             {
                 Id = id,
@@ -379,7 +388,7 @@ namespace SubsonicPlayer
                 ArtistId = GetAttr(song, "artistId"),
                 Album = GetAttr(song, "album"),
                 AlbumId = GetAttr(song, "albumId"),
-                CoverArtId = GetAttr(song, "coverArt"),
+                CoverArtId = coverArt,
                 Genre = GetAttr(song, "genre"),
                 Year = GetIntAttr(song, "year"),
                 TrackNumber = GetIntAttr(song, "track"),
@@ -394,13 +403,15 @@ namespace SubsonicPlayer
         {
             string id = GetAttr(album, "id");
             if (string.IsNullOrEmpty(id)) return null;
+            string coverArt = GetAttr(album, "coverArt");
+            if (string.IsNullOrEmpty(coverArt)) coverArt = id;
             return new AlbumItem
             {
                 Id = id,
                 Title = GetAttr(album, "name"),
                 Artist = GetAttr(album, "artist"),
                 ArtistId = GetAttr(album, "artistId"),
-                CoverArtId = GetAttr(album, "coverArt"),
+                CoverArtId = coverArt,
                 Year = GetIntAttr(album, "year"),
                 SongCount = GetIntAttr(album, "songCount"),
                 DurationSeconds = GetIntAttr(album, "duration"),

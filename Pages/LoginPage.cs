@@ -4,12 +4,12 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
-namespace SubsonicPlayer
+namespace WinSub
 {
     public class LoginPage : UserControl
     {
         private Label _lblTitle;
-        private Label _lblServer;
+        private Label _lblServers;
         private TextBox _txtServer;
         private Label _lblName;
         private TextBox _txtName;
@@ -23,6 +23,8 @@ namespace SubsonicPlayer
         private ListBox _serverList;
         private Button _btnAdd;
         private Button _btnDelete;
+        private Label _lblUrl;
+        private bool _initialized;
 
         private Color _bgColor = Color.FromArgb(30, 30, 30);
         private Color _accentColor = Color.FromArgb(53, 116, 252);
@@ -36,13 +38,8 @@ namespace SubsonicPlayer
 
         public LoginPage()
         {
-            InitializeUI();
-        }
-
-        private void InitializeUI()
-        {
             this.BackColor = _bgColor;
-            this.Resize += (s, e) => CenterForm();
+            this.Resize += (s, e) => Reposition();
         }
 
         protected override void OnVisibleChanged(EventArgs e)
@@ -50,28 +47,21 @@ namespace SubsonicPlayer
             base.OnVisibleChanged(e);
             if (this.Visible && this.Width > 0)
             {
-                CenterForm();
+                if (!_initialized)
+                {
+                    BuildControls();
+                    _initialized = true;
+                }
+                Reposition();
                 RefreshServerList();
                 LoadSavedCredentials();
             }
         }
 
-        private void CenterForm()
+        private void BuildControls()
         {
-            Controls.Clear();
-
-            int formW = this.Width;
-            int formH = this.Height;
-            int centerX = formW / 2;
-            int formY = (formH - 480) / 2;
-            if (formY < 20) formY = 20;
-
-            int leftX = centerX - 230;
-            int rightX = centerX + 10;
-
             _picLogo = new PictureBox();
             _picLogo.Size = new Size(56, 56);
-            _picLogo.Location = new Point(centerX - 28, formY);
             _picLogo.BackColor = _accentColor;
             _picLogo.Paint += (s, e) =>
             {
@@ -82,19 +72,13 @@ namespace SubsonicPlayer
             };
             Controls.Add(_picLogo);
 
-            _lblTitle = CreateLabel("WinSub", 0, formY + 64, 16f, FontStyle.Bold, _textColor);
-            using (Font f = new Font("Segoe UI", 16f, FontStyle.Bold))
-            {
-                int tw = TextRenderer.MeasureText("WinSub", f).Width;
-                _lblTitle.Location = new Point(centerX - tw / 2, formY + 64);
-            }
+            _lblTitle = CreateLabel("WinSub", 0, 0, 16f, FontStyle.Bold, _textColor);
             Controls.Add(_lblTitle);
 
-            _lblServer = CreateLabel("Серверы", leftX, formY + 100, 9f, FontStyle.Bold, _textColor);
-            Controls.Add(_lblServer);
+            _lblServers = CreateLabel("Серверы", 0, 0, 9f, FontStyle.Bold, _textColor);
+            Controls.Add(_lblServers);
 
             _serverList = new ListBox();
-            _serverList.Location = new Point(leftX, formY + 120);
             _serverList.Size = new Size(210, 180);
             _serverList.BackColor = _listBg;
             _serverList.ForeColor = _textColor;
@@ -115,7 +99,6 @@ namespace SubsonicPlayer
 
             _btnAdd = new Button();
             _btnAdd.Text = "+";
-            _btnAdd.Location = new Point(leftX, formY + 306);
             _btnAdd.Size = new Size(32, 28);
             _btnAdd.FlatStyle = FlatStyle.Flat;
             _btnAdd.FlatAppearance.BorderSize = 0;
@@ -135,7 +118,6 @@ namespace SubsonicPlayer
 
             _btnDelete = new Button();
             _btnDelete.Text = "\u2715";
-            _btnDelete.Location = new Point(leftX + 38, formY + 306);
             _btnDelete.Size = new Size(32, 28);
             _btnDelete.FlatStyle = FlatStyle.Flat;
             _btnDelete.FlatAppearance.BorderSize = 0;
@@ -163,34 +145,33 @@ namespace SubsonicPlayer
             };
             Controls.Add(_btnDelete);
 
-            _lblName = CreateLabel("Наименование", rightX, formY + 100, 9f, FontStyle.Regular, _dimClr);
+            _lblName = CreateLabel("Наименование", 0, 0, 9f, FontStyle.Regular, _dimClr);
             Controls.Add(_lblName);
 
-            _txtName = CreateInput(rightX, formY + 120, "");
+            _txtName = CreateInput("");
             Controls.Add(_txtName);
 
-            _lblServer = CreateLabel("URL сервера", rightX, formY + 160, 9f, FontStyle.Regular, _dimClr);
-            Controls.Add(_lblServer);
-
-            _txtServer = CreateInput(rightX, formY + 180, "http://");
-            Controls.Add(_txtServer);
-
-            _lblUser = CreateLabel("Логин", rightX, formY + 220, 9f, FontStyle.Regular, _dimClr);
+            _lblUser = CreateLabel("Логин", 0, 0, 9f, FontStyle.Regular, _dimClr);
             Controls.Add(_lblUser);
 
-            _txtUser = CreateInput(rightX, formY + 240, "");
+            _txtUser = CreateInput("");
             Controls.Add(_txtUser);
 
-            _lblPass = CreateLabel("Пароль", rightX, formY + 280, 9f, FontStyle.Regular, _dimClr);
+            _lblPass = CreateLabel("Пароль", 0, 0, 9f, FontStyle.Regular, _dimClr);
             Controls.Add(_lblPass);
 
-            _txtPass = CreateInput(rightX, formY + 300, "");
+            _txtPass = CreateInput("");
             _txtPass.UseSystemPasswordChar = true;
             Controls.Add(_txtPass);
 
+            _lblUrl = CreateLabel("URL сервера", 0, 0, 9f, FontStyle.Regular, _dimClr);
+            Controls.Add(_lblUrl);
+
+            _txtServer = CreateInput("http://");
+            Controls.Add(_txtServer);
+
             _btnConnect = new Button();
             _btnConnect.Text = "Подключиться";
-            _btnConnect.Location = new Point(rightX, formY + 350);
             _btnConnect.Size = new Size(210, 36);
             _btnConnect.FlatStyle = FlatStyle.Flat;
             _btnConnect.FlatAppearance.BorderSize = 0;
@@ -201,8 +182,48 @@ namespace SubsonicPlayer
             _btnConnect.Click += btnConnect_Click;
             Controls.Add(_btnConnect);
 
-            _lblStatus = CreateLabel("", rightX, formY + 396, 8f, FontStyle.Regular, Color.FromArgb(255, 100, 100));
+            _lblStatus = CreateLabel("", 0, 0, 8f, FontStyle.Regular, Color.FromArgb(255, 100, 100));
             Controls.Add(_lblStatus);
+        }
+
+        private void Reposition()
+        {
+            if (!_initialized) return;
+
+            int formW = this.Width;
+            int formH = this.Height;
+            int centerX = formW / 2;
+            int formY = (formH - 480) / 2;
+            if (formY < 20) formY = 20;
+
+            int leftX = centerX - 230;
+            int rightX = centerX + 10;
+
+            _picLogo.Location = new Point(centerX - 28, formY);
+
+            using (Font f = new Font("Segoe UI", 16f, FontStyle.Bold))
+            {
+                int tw = TextRenderer.MeasureText("WinSub", f).Width;
+                _lblTitle.Location = new Point(centerX - tw / 2, formY + 64);
+            }
+
+            _lblServers.Location = new Point(leftX, formY + 100);
+            _serverList.Location = new Point(leftX, formY + 120);
+            _btnAdd.Location = new Point(leftX, formY + 306);
+            _btnDelete.Location = new Point(leftX + 38, formY + 306);
+
+            _lblName.Location = new Point(rightX, formY + 100);
+            _txtName.Location = new Point(rightX, formY + 120);
+            _lblUser.Location = new Point(rightX, formY + 220);
+            _txtUser.Location = new Point(rightX, formY + 240);
+            _lblPass.Location = new Point(rightX, formY + 280);
+            _txtPass.Location = new Point(rightX, formY + 300);
+
+            _lblUrl.Location = new Point(rightX, formY + 160);
+            _txtServer.Location = new Point(rightX, formY + 180);
+
+            _btnConnect.Location = new Point(rightX, formY + 350);
+            _lblStatus.Location = new Point(rightX, formY + 396);
         }
 
         private Label CreateLabel(string text, int x, int y, float fontSize, FontStyle style, Color color)
@@ -216,11 +237,10 @@ namespace SubsonicPlayer
             return lbl;
         }
 
-        private TextBox CreateInput(int x, int y, string text)
+        private TextBox CreateInput(string text)
         {
             TextBox txt = new TextBox();
             txt.Text = text;
-            txt.Location = new Point(x, y);
             txt.Size = new Size(210, 26);
             txt.BackColor = _inputBg;
             txt.ForeColor = _textColor;
@@ -248,6 +268,14 @@ namespace SubsonicPlayer
                     _serverList.SelectedIndex = 0;
                 }
             }
+        }
+
+        private string LazyText(Exception ex)
+        {
+            string msg = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
+            if (string.IsNullOrEmpty(msg)) msg = ex.Message;
+            if (msg.Length > 90) msg = msg.Substring(0, 90) + "...";
+            return msg;
         }
 
         private void btnConnect_Click(object sender, EventArgs e)
@@ -303,9 +331,7 @@ namespace SubsonicPlayer
                 if (ev.Error != null)
                 {
                     _lblStatus.ForeColor = Color.FromArgb(255, 100, 100);
-                    _lblStatus.Text = ev.Error.InnerException != null
-                        ? ev.Error.InnerException.Message
-                        : ev.Error.Message;
+                    _lblStatus.Text = LazyText(ev.Error);
                     return;
                 }
 

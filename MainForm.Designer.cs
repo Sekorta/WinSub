@@ -1,4 +1,4 @@
-namespace SubsonicPlayer
+﻿namespace WinSub
 {
     partial class MainForm
     {

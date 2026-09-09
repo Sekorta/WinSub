@@ -1,7 +1,7 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
-namespace SubsonicPlayer
+namespace WinSub
 {
     public enum RepeatMode { Off, All, One }
 
@@ -35,6 +35,12 @@ namespace SubsonicPlayer
         {
             _player = player;
             _player.PlaybackFinished += OnPlayerFinished;
+            _player.PlaybackStarted += OnPlaybackStarted;
+        }
+
+        private void OnPlaybackStarted(object sender, EventArgs e)
+        {
+            PreBufferNext();
         }
 
         public void PlayTrack(int index)
@@ -58,10 +64,49 @@ namespace SubsonicPlayer
 
             TrackItem track = _queue[index];
             string url = App.Client.GetStreamUrl(track.Id);
-            _player.Play(url);
+            _player.Play(url, track.Id);
 
             if (TrackChanged != null)
                 TrackChanged(this, EventArgs.Empty);
+        }
+
+        private int GetNextIndex()
+        {
+            if (_queue.Count == 0) return -1;
+
+            if (Repeat == RepeatMode.One)
+                return _currentIndex;
+
+            if (Shuffle && _shuffleOrder.Count > 0)
+            {
+                int pos = _shuffleOrder.IndexOf(_currentIndex);
+                if (pos >= 0 && pos < _shuffleOrder.Count - 1)
+                    return _shuffleOrder[pos + 1];
+                if (Repeat == RepeatMode.All)
+                    return _shuffleOrder[0];
+                return -1;
+            }
+
+            int nextIndex = _currentIndex + 1;
+            if (nextIndex >= _queue.Count)
+            {
+                if (Repeat == RepeatMode.All)
+                    return 0;
+                return -1;
+            }
+            return nextIndex;
+        }
+
+        private void PreBufferNext()
+        {
+            if (_currentIndex < 0) return;
+            int nextIndex = GetNextIndex();
+            if (nextIndex >= 0 && nextIndex < _queue.Count)
+            {
+                TrackItem nextTrack = _queue[nextIndex];
+                string nextUrl = App.Client.GetStreamUrl(nextTrack.Id);
+                _player.PreBufferNextTrack(nextTrack.Id, nextUrl);
+            }
         }
 
         public void PlayQueue(List<TrackItem> tracks, int startIndex)
@@ -81,6 +126,7 @@ namespace SubsonicPlayer
             _queue.AddRange(tracks);
             if (QueueChanged != null)
                 QueueChanged(this, EventArgs.Empty);
+            PreBufferNext();
         }
 
         public void AddToQueue(TrackItem track)
@@ -88,6 +134,7 @@ namespace SubsonicPlayer
             _queue.Add(track);
             if (QueueChanged != null)
                 QueueChanged(this, EventArgs.Empty);
+            PreBufferNext();
         }
 
         public void AddToQueueNext(TrackItem track)
@@ -96,6 +143,7 @@ namespace SubsonicPlayer
             _queue.Insert(insertAt, track);
             if (QueueChanged != null)
                 QueueChanged(this, EventArgs.Empty);
+            PreBufferNext();
         }
 
         public void RemoveFromQueue(int index)
@@ -111,6 +159,7 @@ namespace SubsonicPlayer
             }
             if (QueueChanged != null)
                 QueueChanged(this, EventArgs.Empty);
+            PreBufferNext();
         }
 
         public void ClearQueue()
@@ -141,6 +190,8 @@ namespace SubsonicPlayer
 
             if (QueueChanged != null)
                 QueueChanged(this, EventArgs.Empty);
+
+            PreBufferNext();
         }
 
         public void Next()
@@ -238,6 +289,7 @@ namespace SubsonicPlayer
                     _shuffleOrder.Add(i);
                 ShuffleList(_shuffleOrder);
             }
+            PreBufferNext();
         }
 
         public void ToggleRepeat()
@@ -248,6 +300,7 @@ namespace SubsonicPlayer
                 Repeat = RepeatMode.One;
             else
                 Repeat = RepeatMode.Off;
+            PreBufferNext();
         }
 
         private void ShuffleList(List<int> list)

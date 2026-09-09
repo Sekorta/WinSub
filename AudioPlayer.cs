@@ -1,12 +1,11 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
-using System.Net;
 using System.Threading;
 using System.Windows.Forms;
 using NAudio.Wave;
 
-namespace SubsonicPlayer
+namespace WinSub
 {
     public class AudioPlayer : IDisposable
     {
@@ -16,10 +15,19 @@ namespace SubsonicPlayer
         private string _pcmFile;
         private Process _ffmpegProcess;
         private volatile bool _isPlaying;
+        private volatile bool _isLoading;
         private int _playId;
         private Control _invokeTarget;
         private string _currentFormat;
         private int _currentBitRate;
+        private readonly object _preBufferLock = new object();
+        private string _preBufferedId;
+        private string _preBufferedFile;
+        private bool _preBufferInFlight;
+        private bool _preBufferDone;
+        private bool _preBufferError;
+        private ManualResetEventSlim _preBufferWait;
+        private float _lastVolume = 0.8f;
 
         private static string FFmpegPath
         {
@@ -34,29 +42,53 @@ namespace SubsonicPlayer
             }
         }
 
-
         public bool IsPlaying { get { return _isPlaying; } }
+        public bool IsLoading { get { return _isLoading; } }
         public string CurrentFormat { get { return _currentFormat; } }
         public int CurrentBitRate { get { return _currentBitRate; } }
         public float Volume
         {
-            get { return _waveOut != null ? _waveOut.Volume : 1f; }
-            set { if (_waveOut != null) _waveOut.Volume = value; }
+            get { return _waveOut != null ? _waveOut.Volume : _lastVolume; }
+            set { _lastVolume = value; if (_waveOut != null) _waveOut.Volume = value; }
         }
 
         public long Length
         {
-            get { try { return _waveStream != null ? _waveStream.Length : 0; } catch { return 0; } }
+            get
+            {
+                try
+                {
+                    if (_waveStream != null) return _waveStream.Length;
+                    return 0;
+                }
+                catch { return 0; }
+            }
         }
 
         public TimeSpan CurrentTime
         {
-            get { try { return _waveStream != null ? _waveStream.CurrentTime : TimeSpan.Zero; } catch { return TimeSpan.Zero; } }
+            get
+            {
+                try
+                {
+                    if (_waveStream != null) return _waveStream.CurrentTime;
+                    return TimeSpan.Zero;
+                }
+                catch { return TimeSpan.Zero; }
+            }
         }
 
         public TimeSpan TotalTime
         {
-            get { try { return _waveStream != null ? _waveStream.TotalTime : TimeSpan.Zero; } catch { return TimeSpan.Zero; } }
+            get
+            {
+                try
+                {
+                    if (_waveStream != null) return _waveStream.TotalTime;
+                    return TimeSpan.Zero;
+                }
+                catch { return TimeSpan.Zero; }
+            }
         }
 
         public event EventHandler PlaybackStarted;
@@ -76,105 +108,276 @@ namespace SubsonicPlayer
             _waveOut.Volume = 0.8f;
         }
 
-        public void Play(string url)
+        public void PreBufferNextTrack(string songId, string url)
+        {
+            if (string.IsNullOrEmpty(songId)) return;
+            lock (_preBufferLock)
+            {
+                if (_preBufferedId == songId && _preBufferInFlight) return;
+                if (_preBufferedId == songId && _preBufferDone && !_preBufferError && _preBufferedFile != null) return;
+                TryDelete(_preBufferedFile);
+                _preBufferedId = songId;
+                _preBufferedFile = null;
+                _preBufferInFlight = true;
+                _preBufferDone = false;
+                _preBufferError = false;
+                _preBufferWait = new ManualResetEventSlim(false);
+            }
+
+            string tempFile = Path.Combine(Path.GetTempPath(),
+                "ssp_prebuf_" + Guid.NewGuid().ToString("N") + ".tmp");
+
+            ThreadPool.QueueUserWorkItem(state =>
+            {
+                bool ok = false;
+                try
+                {
+                    WinHttpClient.DownloadFile(url, tempFile);
+                    ok = true;
+                }
+                catch { }
+                if (!ok) TryDelete(tempFile);
+
+                lock (_preBufferLock)
+                {
+                    if (_preBufferedId == songId)
+                    {
+                        if (ok)
+                            _preBufferedFile = tempFile;
+                        else
+                            _preBufferError = true;
+                        _preBufferInFlight = false;
+                        _preBufferDone = true;
+                        if (_preBufferWait != null)
+                        {
+                            try { _preBufferWait.Set(); }
+                            catch { }
+                        }
+                    }
+                    else
+                    {
+                        TryDelete(tempFile);
+                    }
+                }
+            });
+        }
+
+        private string ConsumePreBuffer(string songId)
+        {
+            lock (_preBufferLock)
+            {
+                if (!string.IsNullOrEmpty(songId) && _preBufferedId == songId && !string.IsNullOrEmpty(_preBufferedFile))
+                {
+                    string file = _preBufferedFile;
+                    _preBufferedId = null;
+                    _preBufferedFile = null;
+                    return file;
+                }
+                return null;
+            }
+        }
+
+        public void Play(string url, string songId = null)
         {
             _playId++;
             Stop();
             _isPlaying = true;
+            _isLoading = true;
 
             int currentPlayId = _playId;
+
+            string preBuffered = ConsumePreBuffer(songId);
+            if (preBuffered != null && File.Exists(preBuffered))
+            {
+                ThreadPool.QueueUserWorkItem(state => PlayFromFile(preBuffered, currentPlayId));
+                return;
+            }
+
+            ManualResetEventSlim waitOn = null;
+            lock (_preBufferLock)
+            {
+                if (!string.IsNullOrEmpty(songId) && _preBufferedId == songId && _preBufferInFlight)
+                    waitOn = _preBufferWait;
+            }
+
+            if (waitOn != null)
+            {
+                ThreadPool.QueueUserWorkItem(state =>
+                {
+                    bool ready = false;
+                    try { ready = waitOn.Wait(25000); }
+                    catch { }
+
+                    if (currentPlayId != _playId) return;
+
+                    string file = null;
+                    lock (_preBufferLock)
+                    {
+                        if (_preBufferedId == songId && _preBufferDone && !_preBufferError && _preBufferedFile != null)
+                        {
+                            file = _preBufferedFile;
+                            _preBufferedId = null;
+                            _preBufferedFile = null;
+                        }
+                    }
+
+                    if (file != null && File.Exists(file))
+                        PlayFromFile(file, currentPlayId);
+                    else
+                        DownloadAndPlay(url, songId, currentPlayId);
+                });
+                return;
+            }
+
+            DownloadAndPlay(url, songId, currentPlayId);
+        }
+
+        private void DownloadAndPlay(string url, string songId, int currentPlayId)
+        {
             string tempFile = Path.Combine(Path.GetTempPath(),
-                "ssp_" + Guid.NewGuid().ToString("N") + ".tmp");
+                "ssp_dl_" + Guid.NewGuid().ToString("N") + ".tmp");
 
             ThreadPool.QueueUserWorkItem(state =>
             {
-                try
+                int rounds = 0;
+                while (currentPlayId == _playId && rounds < 2)
                 {
-                    using (WebClient client = new WebClient())
+                    bool ok = false;
+                    for (int attempt = 0; attempt < 3 && !ok && currentPlayId == _playId; attempt++)
                     {
-                        client.DownloadFile(url, tempFile);
+                        try
+                        {
+                            WinHttpClient.DownloadFile(url, tempFile);
+                            ok = true;
+                        }
+                        catch
+                        {
+                            TryDelete(tempFile);
+                            try { Thread.Sleep(1500); } catch { }
+                        }
                     }
 
                     if (currentPlayId != _playId) { TryDelete(tempFile); return; }
 
-                    string ext = ".mp3";
-                    if (File.Exists(tempFile) && tempFile.Length > 4)
+                    if (ok)
                     {
-                        byte[] header = new byte[4];
-                        using (FileStream fs = new FileStream(tempFile, FileMode.Open, FileAccess.Read))
-                            fs.Read(header, 0, 4);
-                        if (header[0] == 0x66 && header[1] == 0x4C && header[2] == 0x61 && header[3] == 0x43)
-                            ext = ".flac";
-                        else if (header[0] == 0x4F && header[1] == 0x67 && header[2] == 0x67 && header[3] == 0x53)
-                            ext = ".ogg";
-                    }
-                    bool useFFmpeg = ext == ".flac" || ext == ".ogg";
-                    string playFile = Path.ChangeExtension(tempFile, ext);
-                    try { File.Move(tempFile, playFile); }
-                    catch { playFile = tempFile; }
-
-                    if (currentPlayId != _playId) { TryDelete(playFile); return; }
-
-                    WaveStream newStream = null;
-
-                    if (useFFmpeg)
-                    {
-                        newStream = DecodeWithFFmpeg(playFile, currentPlayId);
-                    }
-                    else
-                    {
-                        try { newStream = new Mp3FileReader(playFile); }
-                        catch
-                        {
-                            try { newStream = new MediaFoundationReader(playFile); }
-                            catch { }
-                        }
-                    }
-
-                    if (newStream == null || currentPlayId != _playId)
-                    {
-                        if (newStream != null) newStream.Dispose();
-                        TryDelete(playFile);
-                        if (currentPlayId == _playId)
-                        {
-                            _isPlaying = false;
-                            SafeInvoke(() => { if (Error != null) Error(this, EventArgs.Empty); });
-                        }
+                        PlayFromFile(tempFile, currentPlayId);
                         return;
                     }
 
-                    _tempFile = playFile;
-                    _waveStream = newStream;
-                    if (ext == ".flac") _currentFormat = "FLAC";
-                    else if (ext == ".ogg") _currentFormat = "OGG";
-                    else _currentFormat = "MP3";
-                    _currentBitRate = 0;
-
-                    SafeInvoke(() =>
-                    {
-                        if (currentPlayId != _playId) return;
-                        try
-                        {
-                            _waveOut.Init(_waveStream);
-                            _waveOut.Play();
-                            if (PlaybackStarted != null) PlaybackStarted(this, EventArgs.Empty);
-                        }
-                        catch
-                        {
-                            _isPlaying = false;
-                            if (Error != null) Error(this, EventArgs.Empty);
-                        }
-                    });
-                }
-                catch
-                {
+                    TryDelete(tempFile);
+                    rounds++;
                     if (currentPlayId == _playId)
                     {
+                        try { Thread.Sleep(2500); } catch { }
+                        tempFile = Path.Combine(Path.GetTempPath(),
+                            "ssp_dl_" + Guid.NewGuid().ToString("N") + ".tmp");
+                    }
+                }
+
+                if (currentPlayId != _playId) return;
+                TryDelete(tempFile);
+                _isLoading = false;
+                _isPlaying = false;
+                SafeInvoke(() => { if (Error != null) Error(this, EventArgs.Empty); });
+            });
+        }
+
+        private void PlayFromFile(string tempFile, int currentPlayId)
+        {
+            try
+            {
+                if (currentPlayId != _playId) { TryDelete(tempFile); return; }
+
+                string ext = ".mp3";
+                if (File.Exists(tempFile) && tempFile.Length > 4)
+                {
+                    byte[] header = new byte[4];
+                    using (FileStream fs = new FileStream(tempFile, FileMode.Open, FileAccess.Read))
+                        fs.Read(header, 0, 4);
+                    if (header[0] == 0x66 && header[1] == 0x4C && header[2] == 0x61 && header[3] == 0x43)
+                        ext = ".flac";
+                    else if (header[0] == 0x4F && header[1] == 0x67 && header[2] == 0x67 && header[3] == 0x53)
+                        ext = ".ogg";
+                }
+                bool useFFmpeg = ext == ".flac" || ext == ".ogg";
+                string playFile = Path.ChangeExtension(tempFile, ext);
+                try { File.Move(tempFile, playFile); }
+                catch { playFile = tempFile; }
+
+                if (currentPlayId != _playId) { TryDelete(playFile); return; }
+
+                WaveStream newStream = null;
+
+                if (useFFmpeg)
+                {
+                    newStream = DecodeWithFFmpeg(playFile, currentPlayId);
+                }
+                else
+                {
+                    try { newStream = new Mp3FileReader(playFile); }
+                    catch
+                    {
+                        try { newStream = new MediaFoundationReader(playFile); }
+                        catch { }
+                    }
+                }
+
+                if (newStream == null || currentPlayId != _playId)
+                {
+                    if (newStream != null) newStream.Dispose();
+                    TryDelete(playFile);
+                    if (currentPlayId == _playId)
+                    {
+                        _isLoading = false;
                         _isPlaying = false;
                         SafeInvoke(() => { if (Error != null) Error(this, EventArgs.Empty); });
                     }
+                    return;
                 }
-            });
+
+                string format = ext == ".flac" ? "FLAC" : ext == ".ogg" ? "OGG" : "MP3";
+                WaveStream stream = newStream;
+                string file = playFile;
+
+                SafeInvoke(() =>
+                {
+                    if (currentPlayId != _playId)
+                    {
+                        try { stream.Dispose(); } catch { }
+                        TryDelete(file);
+                        return;
+                    }
+                    try
+                    {
+                        _isLoading = false;
+                        _waveOut.Init(stream);
+                        _waveOut.Play();
+                        _waveStream = stream;
+                        _tempFile = file;
+                        _currentFormat = format;
+                        _currentBitRate = 0;
+                        if (PlaybackStarted != null) PlaybackStarted(this, EventArgs.Empty);
+                    }
+                    catch
+                    {
+                        try { stream.Dispose(); } catch { }
+                        TryDelete(file);
+                        _isLoading = false;
+                        _isPlaying = false;
+                        if (Error != null) Error(this, EventArgs.Empty);
+                    }
+                });
+            }
+            catch
+            {
+                if (currentPlayId == _playId)
+                {
+                    _isLoading = false;
+                    _isPlaying = false;
+                    SafeInvoke(() => { if (Error != null) Error(this, EventArgs.Empty); });
+                }
+            }
         }
 
         private WaveStream DecodeWithFFmpeg(string filePath, int currentPlayId)
@@ -270,6 +473,8 @@ namespace SubsonicPlayer
         {
             _playId++;
             _isPlaying = false;
+            _isLoading = false;
+
             if (_waveOut != null)
             {
                 try { _waveOut.Stop(); }

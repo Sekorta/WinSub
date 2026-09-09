@@ -1,8 +1,8 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 
-namespace SubsonicPlayer
+namespace WinSub
 {
     public class AutoDJService
     {

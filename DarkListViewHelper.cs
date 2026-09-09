@@ -1,6 +1,6 @@
-using System.Windows.Forms;
+﻿using System.Windows.Forms;
 
-namespace SubsonicPlayer
+namespace WinSub
 {
     public class DarkListView : ListView
     {

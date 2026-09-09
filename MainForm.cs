@@ -3,9 +3,10 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows.Forms;
 
-namespace SubsonicPlayer
+namespace WinSub
 {
     public partial class MainForm : Form
     {
@@ -59,7 +60,6 @@ namespace SubsonicPlayer
             GlobalMediaHook.MediaNext += OnGlobalNext;
             GlobalMediaHook.MediaPrev += OnGlobalPrev;
             GlobalMediaHook.MediaStop += OnGlobalStop;
-            GlobalMediaHook.MediaVolumeChanged += OnGlobalVolumeChanged;
             GlobalMediaHook.Start();
 
             BuildLayout();
@@ -481,6 +481,7 @@ namespace SubsonicPlayer
         private void PlayOrResume()
         {
             if (App.Player.IsPlaying) return;
+            if (App.Player.IsLoading) return;
             if (App.Player.Length == 0 && App.Playback.CurrentTrack != null)
             {
                 App.Playback.PlayTrack(App.Playback.CurrentIndex >= 0 ? App.Playback.CurrentIndex : 0);
@@ -518,14 +519,38 @@ namespace SubsonicPlayer
 
             if (!string.IsNullOrEmpty(track.CoverArtId))
             {
-                App.Cache.DownloadCoverArt(track.CoverArtId, 170, (bmp) =>
+                string artId = track.CoverArtId;
+                App.Cache.DownloadCoverArt(artId, 170, (bmp) =>
                 {
-                    _sidebar.Invoke((Action)(() => _sidebar.UpdateTrackInfo(track.Title, track.Artist, bmp)));
+                    try
+                    {
+                        if (_sidebar.InvokeRequired && _sidebar.IsHandleCreated)
+                        {
+                            _sidebar.Invoke((Action)(() =>
+                            {
+                                if (App.Playback.CurrentTrack != null && App.Playback.CurrentTrack.CoverArtId == artId)
+                                    _sidebar.UpdateTrackInfo(track.Title, track.Artist, bmp);
+                                else
+                                    bmp.Dispose();
+                            }));
+                        }
+                        else
+                        {
+                            if (App.Playback.CurrentTrack != null && App.Playback.CurrentTrack.CoverArtId == artId)
+                                _sidebar.UpdateTrackInfo(track.Title, track.Artist, bmp);
+                            else
+                                bmp.Dispose();
+                        }
+                    }
+                    catch
+                    {
+                        try { bmp.Dispose(); } catch { }
+                    }
                 });
             }
 
-            App.Client.Scrobble(track.Id);
-
+            string scrobbleId = track.Id;
+            ThreadPool.QueueUserWorkItem(o => { try { App.Client.Scrobble(scrobbleId); } catch { } });
             if (_currentPage == "queue")
                 _queuePage.RefreshList();
         }
@@ -576,12 +601,6 @@ namespace SubsonicPlayer
         {
             if (InvokeRequired) { BeginInvoke((Action)OnGlobalStop); return; }
             PauseTrack();
-        }
-
-        private void OnGlobalVolumeChanged(int delta)
-        {
-            if (InvokeRequired) { BeginInvoke((Action)(() => OnGlobalVolumeChanged(delta))); return; }
-            ChangeVolume(delta);
         }
 
         private List<TrackItem> GetGenreDetailTracks()
@@ -641,14 +660,6 @@ namespace SubsonicPlayer
                         PauseTrack();
                         m.Result = (IntPtr)1;
                         return;
-                    case APPCOMMAND_MEDIA_VOLUME_UP:
-                        ChangeVolume(5);
-                        m.Result = (IntPtr)1;
-                        return;
-                    case APPCOMMAND_MEDIA_VOLUME_DOWN:
-                        ChangeVolume(-5);
-                        m.Result = (IntPtr)1;
-                        return;
                 }
             }
             base.WndProc(ref m);
@@ -668,12 +679,6 @@ namespace SubsonicPlayer
                 case Keys.Left:
                     SeekRelative(-5);
                     return true;
-                case Keys.Up:
-                    ChangeVolume(5);
-                    return true;
-                case Keys.Down:
-                    ChangeVolume(-5);
-                    return true;
                 case Keys.F11:
                     ToggleFullscreen();
                     return true;
@@ -692,15 +697,6 @@ namespace SubsonicPlayer
             if (newTime < TimeSpan.Zero) newTime = TimeSpan.Zero;
             if (newTime > App.Player.TotalTime) newTime = App.Player.TotalTime;
             App.Player.Seek(newTime);
-        }
-
-        private void ChangeVolume(int delta)
-        {
-            int newVol = _playerBar.GetVolume() + delta;
-            if (newVol < 0) newVol = 0;
-            if (newVol > 100) newVol = 100;
-            App.Player.Volume = newVol / 100f;
-            _playerBar.SetVolumePercent(newVol);
         }
 
         private void ToggleFullscreen()

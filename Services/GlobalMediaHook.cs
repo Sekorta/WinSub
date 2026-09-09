@@ -1,8 +1,8 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace SubsonicPlayer
+namespace WinSub
 {
     public static class GlobalMediaHook
     {
@@ -16,9 +16,6 @@ namespace SubsonicPlayer
         private const int VK_MEDIA_NEXT_TRACK = 0xB0;
         private const int VK_MEDIA_PREV_TRACK = 0xB1;
         private const int VK_MEDIA_STOP = 0xB2;
-        private const int VK_VOLUME_UP = 0xAF;
-        private const int VK_VOLUME_DOWN = 0xAE;
-        private const int VK_VOLUME_MUTE = 0xAD;
 
         private static IntPtr _hookId = IntPtr.Zero;
         private static NativeHookProc _hookProc;
@@ -27,7 +24,6 @@ namespace SubsonicPlayer
         public static event Action MediaNext;
         public static event Action MediaPrev;
         public static event Action MediaStop;
-        public static event Action<int> MediaVolumeChanged;
 
         private delegate IntPtr NativeHookProc(int nCode, IntPtr wParam, IntPtr lParam);
 
@@ -90,12 +86,6 @@ namespace SubsonicPlayer
                             return (IntPtr)1;
                         case VK_MEDIA_STOP:
                             if (isKeyDown && MediaStop != null) MediaStop();
-                            return (IntPtr)1;
-                        case VK_VOLUME_UP:
-                            if (isKeyDown && MediaVolumeChanged != null) MediaVolumeChanged(5);
-                            return (IntPtr)1;
-                        case VK_VOLUME_DOWN:
-                            if (isKeyDown && MediaVolumeChanged != null) MediaVolumeChanged(-5);
                             return (IntPtr)1;
                     }
                 }

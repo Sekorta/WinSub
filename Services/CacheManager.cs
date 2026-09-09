@@ -1,13 +1,16 @@
-using System;
+﻿using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
-using System.Net;
+using System.Threading;
 
-namespace SubsonicPlayer
+namespace WinSub
 {
     public class CacheManager
     {
         private string _cacheDir;
+        private static readonly Dictionary<string, object> _fileLocks = new Dictionary<string, object>();
+        private static readonly SemaphoreSlim _downloadGate = new SemaphoreSlim(4, 4);
 
         public CacheManager()
         {
@@ -27,6 +30,13 @@ namespace SubsonicPlayer
             return null;
         }
 
+        public string GetCoverArtExpectedPath(string id, int size)
+        {
+            if (string.IsNullOrEmpty(id)) return null;
+            string fileName = string.Format("{0}_{1}.jpg", id, size);
+            return Path.Combine(_cacheDir, "covers", fileName);
+        }
+
         public void SaveCoverArt(string id, int size, byte[] data)
         {
             if (string.IsNullOrEmpty(id) || data == null) return;
@@ -34,7 +44,18 @@ namespace SubsonicPlayer
             if (!Directory.Exists(coversDir))
                 Directory.CreateDirectory(coversDir);
             string fileName = string.Format("{0}_{1}.jpg", id, size);
-            File.WriteAllBytes(Path.Combine(coversDir, fileName), data);
+            string path = Path.Combine(coversDir, fileName);
+            lock (GetFileLock(path))
+            {
+                try
+                {
+                    string temp = path + ".tmp";
+                    File.WriteAllBytes(temp, data);
+                    if (File.Exists(path)) File.Delete(path);
+                    File.Move(temp, path);
+                }
+                catch { }
+            }
         }
 
         public void DownloadCoverArt(string id, int size, Action<Bitmap> callback)
@@ -44,39 +65,104 @@ namespace SubsonicPlayer
             string existingPath = GetCoverArtPath(id, size);
             if (existingPath != null)
             {
-                try
+                Bitmap cached = LoadCachedBitmap(existingPath);
+                if (cached != null)
                 {
-                    using (FileStream fs = new FileStream(existingPath, FileMode.Open, FileAccess.Read))
-                    {
-                        Bitmap bmp = new Bitmap(fs);
-                        if (callback != null) callback(bmp);
-                    }
+                    if (callback != null) callback(cached);
                     return;
                 }
-                catch { }
+                try { File.Delete(existingPath); } catch { }
             }
 
             string url = App.Client.GetCoverArtUrl(id, size);
             if (url == null) return;
 
-            WebClient client = new WebClient();
-            client.DownloadDataCompleted += (s, e) =>
+            ThreadPool.QueueUserWorkItem(state =>
             {
-                if (e.Error == null && e.Result != null)
+                Bitmap result = null;
+                try
                 {
-                    SaveCoverArt(id, size, e.Result);
-                    try
+                    object fileLock = GetFileLock(GetCoverArtExpectedPath(id, size));
+                    lock (fileLock)
                     {
-                        using (MemoryStream ms = new MemoryStream(e.Result))
+                        string ready = GetCoverArtPath(id, size);
+                        if (ready != null)
                         {
-                            Bitmap bmp = new Bitmap(ms);
-                            if (callback != null) callback(bmp);
+                            result = LoadCachedBitmap(ready);
+                            if (result == null)
+                                try { File.Delete(ready); } catch { }
+                        }
+                        if (result == null)
+                        {
+                            for (int attempt = 0; attempt < 3 && result == null; attempt++)
+                            {
+                                _downloadGate.Wait();
+                                try
+                                {
+                                    byte[] data = WinHttpClient.DownloadData(url);
+                                    if (data != null && data.Length > 0)
+                                    {
+                                        Bitmap bmp = DecodeBitmap(data);
+                                        if (bmp != null)
+                                        {
+                                            result = bmp;
+                                            SaveCoverArt(id, size, data);
+                                        }
+                                    }
+                                }
+                                catch { }
+                                finally { _downloadGate.Release(); }
+                                if (result == null)
+                                    try { Thread.Sleep(1200); } catch { }
+                            }
                         }
                     }
-                    catch { }
                 }
-            };
-            client.DownloadDataAsync(new Uri(url));
+                catch { }
+                if (result != null && callback != null)
+                {
+                    try { callback(result); }
+                    catch { try { result.Dispose(); } catch { } }
+                }
+            });
+        }
+
+        private static object GetFileLock(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return new object();
+            lock (_fileLocks)
+            {
+                object l;
+                if (!_fileLocks.TryGetValue(key, out l))
+                {
+                    l = new object();
+                    _fileLocks[key] = l;
+                }
+                return l;
+            }
+        }
+
+        private Bitmap LoadCachedBitmap(string path)
+        {
+            try
+            {
+                byte[] data = File.ReadAllBytes(path);
+                return DecodeBitmap(data);
+            }
+            catch { return null; }
+        }
+
+        private Bitmap DecodeBitmap(byte[] data)
+        {
+            try
+            {
+                using (MemoryStream ms = new MemoryStream(data, false))
+                using (Bitmap temp = new Bitmap(ms))
+                {
+                    return new Bitmap(temp);
+                }
+            }
+            catch { return null; }
         }
 
         public void ClearCache()

@@ -1,4 +1,4 @@
-namespace SubsonicPlayer
+﻿namespace WinSub
 {
     public class ArtistItem
     {

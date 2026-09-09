@@ -22,7 +22,13 @@ Subsonic/Navidrome плеер для Windows XP–Win7 (32-bit). Полный в
 - FFmpeg (только для FLAC проигрывания)
 
 ## Сборка
-Используйте `SubsonicPlayer.sln` в Visual Studio 2019 для сборки.
+Используйте `WinSub.sln` в Visual Studio 2019 для сборки.
+
+## Скриншоты
+![Главная](Screenshots/HomePage.png)
+![Альбомы](Screenshots/AlbumsPage.png)
+![Очередь](Screenshots/QueuePage.png)
+![Вход](Screenshots/LoginPage.png)
 
 ## Лицензия
 MIT
@@ -51,7 +57,13 @@ Subsonic/Navidrome desktop player for Windows XP–Win7 (32-bit). Full vibecode,
 - FFmpeg (for FLAC playback only)
 
 ## Build
-Use `SubsonicPlayer.sln` in Visual Studio 2019 for build.
+Use `WinSub.sln` in Visual Studio 2019 for build.
+
+## Screenshots
+![Home](Screenshots/HomePage.png)
+![Albums](Screenshots/AlbumsPage.png)
+![Queue](Screenshots/QueuePage.png)
+![Login](Screenshots/LoginPage.png)
 
 ## License
 MIT

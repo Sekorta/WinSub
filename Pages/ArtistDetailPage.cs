@@ -4,7 +4,7 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace SubsonicPlayer
+namespace WinSub
 {
     public class ArtistDetailPage : UserControl
     {
@@ -123,7 +123,19 @@ namespace SubsonicPlayer
             {
                 App.Cache.DownloadCoverArt(album.CoverArtId, 150, (bmp) =>
                 {
-                    pic.Invoke((Action)(() => pic.Image = bmp));
+                    try
+                    {
+                        if (IsHandleCreated && InvokeRequired)
+                            Invoke((Action)(() =>
+                            {
+                                Image old = pic.Image;
+                                pic.Image = bmp;
+                                if (old != null && old != bmp) old.Dispose();
+                            }));
+                        else
+                            pic.Image = bmp;
+                    }
+                    catch { }
                 });
             }
 

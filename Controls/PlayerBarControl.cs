@@ -1,9 +1,9 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
-namespace SubsonicPlayer
+namespace WinSub
 {
     public class PlayerBarControl : UserControl
     {
@@ -273,9 +273,14 @@ namespace SubsonicPlayer
 
         private void OnPositionTick(object sender, EventArgs e)
         {
-            if (App.Player != null && App.Player.Length > 0)
+            if (App.Player != null && App.Player.IsPlaying)
             {
-                UpdatePosition(App.Player.CurrentTime, App.Player.TotalTime);
+                TimeSpan cur = App.Player.CurrentTime;
+                TimeSpan total = App.Player.TotalTime;
+                if (total.TotalMilliseconds > 0)
+                    UpdatePosition(cur, total);
+                else
+                    _lblTime.Text = FormatTime(cur);
             }
         }
 

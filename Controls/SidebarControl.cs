@@ -5,7 +5,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
-namespace SubsonicPlayer
+namespace WinSub
 {
     public class SidebarControl : UserControl
     {
@@ -206,8 +206,10 @@ namespace SubsonicPlayer
         {
             _lblTrackTitle.Text = title ?? "";
             _lblTrackArtist.Text = artist ?? "";
-            if (cover != null)
-                _picCover.Image = cover;
+            Image old = _picCover.Image;
+            _picCover.Image = cover;
+            if (old != null && !ReferenceEquals(old, cover))
+                old.Dispose();
         }
 
         public void SetBackButtonVisible(bool visible)

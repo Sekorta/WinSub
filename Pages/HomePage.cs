@@ -4,7 +4,7 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace SubsonicPlayer
+namespace WinSub
 {
     public class HomePage : UserControl
     {
@@ -77,7 +77,7 @@ namespace SubsonicPlayer
             BackgroundWorker worker = new BackgroundWorker();
             worker.DoWork += (s, e) =>
             {
-                List<AlbumItem> albums = App.Client.GetAlbumList("recent", 5);
+                List<AlbumItem> albums = App.Client.GetAlbumList("recent", 4);
                 List<TrackItem> tracks = App.Client.GetRandomSongs(10);
                 e.Result = new object[] { albums, tracks };
             };
@@ -159,7 +159,19 @@ namespace SubsonicPlayer
             {
                 App.Cache.DownloadCoverArt(album.CoverArtId, 150, (bmp) =>
                 {
-                    pic.Invoke((Action)(() => pic.Image = bmp));
+                    try
+                    {
+                        if (IsHandleCreated && InvokeRequired)
+                            Invoke((Action)(() =>
+                            {
+                                Image old = pic.Image;
+                                pic.Image = bmp;
+                                if (old != null && old != bmp) old.Dispose();
+                            }));
+                        else
+                            pic.Image = bmp;
+                    }
+                    catch { }
                 });
             }
 
@@ -169,7 +181,7 @@ namespace SubsonicPlayer
         private Control CreateTrackRow(TrackItem track)
         {
             Panel row = new Panel();
-            row.Size = new Size(350, 36);
+            row.Size = new Size(318, 36);
             row.Margin = new Padding(3);
             row.BackColor = Color.FromArgb(35, 35, 35);
             row.Cursor = Cursors.Hand;
@@ -205,7 +217,7 @@ namespace SubsonicPlayer
             lblDuration.Text = track.DurationFormatted;
             lblDuration.ForeColor = Color.FromArgb(100, 100, 100);
             lblDuration.Font = new Font("Segoe UI", 8f);
-            lblDuration.Location = new Point(300, 8);
+            lblDuration.Location = new Point(275, 8);
             lblDuration.AutoSize = true;
 
             row.Controls.Add(pic);
@@ -262,7 +274,19 @@ namespace SubsonicPlayer
             {
                 App.Cache.DownloadCoverArt(track.CoverArtId, 32, (bmp) =>
                 {
-                    pic.Invoke((Action)(() => pic.Image = bmp));
+                    try
+                    {
+                        if (IsHandleCreated && InvokeRequired)
+                            Invoke((Action)(() =>
+                            {
+                                Image old = pic.Image;
+                                pic.Image = bmp;
+                                if (old != null && old != bmp) old.Dispose();
+                            }));
+                        else
+                            pic.Image = bmp;
+                    }
+                    catch { }
                 });
             }
 

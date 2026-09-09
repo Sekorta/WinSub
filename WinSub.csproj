@@ -7,8 +7,8 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}</ProjectGuid>
     <OutputType>WinExe</OutputType>
-    <RootNamespace>SubsonicPlayer</RootNamespace>
-    <AssemblyName>SubsonicPlayer</AssemblyName>
+    <RootNamespace>WinSub</RootNamespace>
+    <AssemblyName>WinSub</AssemblyName>
     <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
     <LangVersion>7.3</LangVersion>
     <FileAlignment>512</FileAlignment>
@@ -45,6 +45,10 @@
       <HintPath>packages\NAudio.1.10.0\lib\net35\NAudio.dll</HintPath>
       <Private>True</Private>
     </Reference>
+    <Reference Include="Portable.BouncyCastle">
+      <HintPath>packages\Portable.BouncyCastle.1.9.0\lib\net40\BouncyCastle.Crypto.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
@@ -68,6 +72,9 @@
     <Compile Include="Services\CacheManager.cs" />
     <Compile Include="Services\SettingsManager.cs" />
     <Compile Include="Services\App.cs" />
+    <Compile Include="Services\WinHttpClient.cs" />
+    <Compile Include="Services\BouncyTlsClient.cs" />
+    <Compile Include="Services\BouncyHttpClient.cs" />
     <Compile Include="Services\GlobalMediaHook.cs" />
     <Compile Include="Controls\SidebarControl.cs">
       <SubType>UserControl</SubType>
